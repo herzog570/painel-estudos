@@ -6,13 +6,13 @@
   --mint: #BADFC2; --forest: #2F5A3C; --charcoal: #23282A; --charcoal-raised: #2E3437;
   --slate: #9AA8A0; --paper: #F4F6F4; --white: #FFFFFF; --stone: #5A6660; --mist: #D7DDD9; --hairline-dark: #3A4246;
 
-  /* papéis — escuro */
-  --bg: var(--charcoal); --surface: var(--charcoal-raised); --text: #E8EEEA; --muted: var(--slate);
-  --line: var(--hairline-dark); --accent: var(--mint); --accent-ink: var(--charcoal);
-  --accent-soft: rgba(186, 223, 194, .14); --accent-bar: rgba(186, 223, 194, .55);
-  --neg: #E3A64A; --pos: var(--mint); --warn: #E3A64A; --hot: #E3A64A;
-  --chip-bg: rgba(255, 255, 255, .06); --track: rgba(255, 255, 255, .08);
-  --px0: var(--mint); --px1: #E3A64A; --px2: #9AA8A0; --px3: #E8EEEA;
+  /* papéis — escuro (mais contraste: fundo mais fundo, verde mais saturado) */
+  --bg: #141718; --surface: #1D2224; --text: #F2F6F3; --muted: #A9B6AE;
+  --line: #2C3437; --accent: #6FD08C; --accent-ink: #141718;
+  --accent-soft: rgba(111, 208, 140, .16); --accent-bar: rgba(111, 208, 140, .6);
+  --neg: #F0B04F; --pos: #6FD08C; --warn: #F0B04F; --hot: #F0B04F;
+  --chip-bg: rgba(255, 255, 255, .07); --track: rgba(255, 255, 255, .09);
+  --px0: #6FD08C; --px1: #F0B04F; --px2: #A9B6AE; --px3: #F2F6F3;
 
   --serif: "EB Garamond", Garamond, "Times New Roman", serif;
   --sans: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;

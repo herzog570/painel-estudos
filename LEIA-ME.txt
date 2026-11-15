@@ -1,0 +1,46 @@
+PAINEL DE ESTUDOS (local, sem internet, sem banco de dados)
+
+USO
+1. Duplo clique em "Abrir Painel.bat".
+   Ele lê todos os .md da pasta "dashboard estudos", gera app\dados.js e abre index.html no navegador.
+2. Alternativa sem o .bat: abra index.html e clique em "Carregar pasta…" escolhendo a pasta "dashboard estudos".
+
+FONTES PRIMÁRIAS (.md na pasta "dashboard estudos")
+- desempenho_<fonte>_<AAAA-MM-DD>.md          -> guia "Visão geral" (usa o de data mais recente)
+- incidencia_<prova>_<fonte>_<AAAA-MM-DD>.md  -> uma guia por prova (ex.: incidencia_susba_...)
+dados.js é só cache: pode apagar e regerar com o .bat.
+
+NOVA PROVA
+Salve um incidencia_<slug>_<fonte>_<data>.md no mesmo formato do SUS-BA.
+A guia aparece sozinha. Em app\config.js dá para definir nome, nº de questões e observações do slug.
+
+REGRAS (app\config.js -> regras)
+- Incidência: coluna "% estimada" do .md (recente 2021+ com prior do histórico, K=100).
+- Perda esperada = incidência estimada × (1 − acerto 2 anos) × nº de questões da prova.
+- Tendência: 90 dias vs. período anterior derivado [(n2·p2 − n90·p90)/(n2 − n90)];
+  significativa se |Δ| > 2 EP; sinal fraco se > 1 EP; exige n ≥ 20 nos 90 dias.
+- Acerto com n < 20 aparece em itálico (baixa confiança).
+- Vol. 90d ÷ incid.: < 0,5 = sub-treino; > 2 = sobre-treino (só temas com incidência ≥ 1,5%).
+
+ESTRUTURA
+app\js\md.js      parser genérico de tabelas Markdown
+app\js\model.js   leitura das fontes + regras de análise
+app\js\charts.js  gráficos SVG
+app\js\views.js   telas
+app\js\main.js    abas, filtros, carregamento
+
+PLANEJADOR (guia própria, combina provas)
+- Marque as provas que entram no plano. Com duas provas, um controle divide o peso entre elas;
+  com três ou mais, um controle por prova (normalizados para somar 100%).
+- Peso sugerido pelas datas: proporcional a 1 / (dias até a prova + 7). Prova com data passada sai sozinha.
+  Datas em config.js -> provas -> data (AAAA-MM-DD).
+- A incidência combinada usa a % de cada prova (não o nº de questões).
+- Divisão sugerida: o total do ciclo (5 x questoesPadrao) é repartido entre os dias pela prioridade,
+  entre minQuestoesDia e maxQuestoesDia. Editar um dia fixa os valores; "Usar divisão sugerida" volta ao automático.
+- "Ajustes avançados" guarda os 10 controles finos da fórmula. Tudo fica salvo neste navegador.
+- Semana: salve semana_AAAA-MM-DD.md na pasta (modelo: app\MODELO_semana.md). Só entra se for posterior
+  à data do desempenho_*.md.
+
+NOVA PROVA
+Salve incidencia_<slug>_<fonte>_<data>.md no formato das existentes e acrescente o slug em config.js
+(nome, data, questoes, observacoes). A guia e a opção no planejador aparecem sozinhas.

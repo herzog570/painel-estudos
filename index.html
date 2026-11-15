@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Painel de Estudos</title>
+  <meta name="theme-color" content="#23282A">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip" href="#view">Ir para o conteúdo</a>
+  <aside class="side">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="19" fill="none" stroke="currentColor" stroke-width="1"/><text x="20" y="25" text-anchor="middle" font-family="EB Garamond, Georgia, serif" font-size="17" font-style="italic" fill="currentColor">LH</text></svg>
+      </span>
+      <span class="brand-txt"><span class="brand-name">Painel de Estudos</span><span class="brand-sub">residência</span></span>
+    </div>
+    <nav id="tabs" class="tabs" aria-label="Guias"></nav>
+    <label class="btn side-btn" title="Lê os .md de uma pasta, sem rodar o .bat">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+      Carregar pasta…
+      <input id="pick" type="file" webkitdirectory directory multiple hidden>
+    </label>
+    <div class="side-foot">
+      <p class="greek" lang="grc">ὁ βίος βραχύς, ἡ δὲ τέχνη μακρή</p>
+      <p class="translit">ho bíos brachýs, hē de téchnē makrḗ</p>
+      <p class="transl">a vida é breve, a arte é longa</p>
+    </div>
+  </aside>
+  <div class="page">
+    <main id="view" tabindex="-1"></main>
+    <footer id="fontes" class="foot"></footer>
+  </div>
+
+  <!-- dados.js é gerado a partir dos .md por "Abrir Painel.bat" -->
+  <script src="dados.js"></script>
+  <script src="config.js"></script>
+  <script src="js/md.js"></script>
+  <script src="js/model.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/planner.js"></script>
+  <script src="js/views.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    if ("serviceWorker" in navigator && location.protocol !== "file:")
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+  </script>
+</body>
+</html>

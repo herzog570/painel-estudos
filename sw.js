@@ -1,5 +1,5 @@
 /* Service worker: casca em cache (funciona offline); dados.js sempre tenta a rede primeiro. */
-const CACHE = "painel-v3";
+const CACHE = "painel-v4";
 const SHELL = ["./", "./index.html", "./style.css", "./config.js", "./manifest.json",
   "./js/md.js", "./js/model.js", "./js/charts.js", "./js/planner.js", "./js/views.js", "./js/perfil.js", "./js/app_views.js", "./js/api.js", "./js/main.js",
   "./icons/icon-192.png", "./icons/icon-512.png"];

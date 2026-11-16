@@ -97,9 +97,9 @@
       ${aviso(APP.msg)}
       <div class="card"><form data-form="conta" class="ct-form" novalidate>
         <label class="fld" for="ct-nome"><span>Nome</span><input id="ct-nome" name="nome" type="text" maxlength="80" value="${esc(pf.nome || "")}" required></label>
-        <fieldset class="fld"><legend>Provas que vou prestar</legend>
+        ${pf.papel === "mestre" ? "" : `<fieldset class="fld"><legend>Provas que vou prestar</legend>
           ${provas.map(s => `<label class="chk"><input type="checkbox" name="prova" value="${s}" ${sel.has(s) ? "checked" : ""}> ${esc((cfg.provas[s] || {}).titulo || s.toUpperCase())}</label>`).join("")}
-        </fieldset>
+        </fieldset>`}
         <button class="btn primary" type="submit">Salvar</button>
       </form></div>
       <p><button class="btn" data-act="sair">Sair</button></p>`;

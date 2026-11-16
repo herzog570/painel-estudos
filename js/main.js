@@ -21,9 +21,8 @@
     DB.semana = PF.semana(APP.rows, hoje);                          // ...que entram no planejador como "semana"
   }
   function tabs() {
-    const t = [];
-    if (mestre()) t.push({ id: "alunos", label: "Alunos" }, { sep: "Meu painel" });
-    t.push({ id: "geral", label: "Visão geral" }, { id: "lancar", label: "Lançar questões" });
+    if (mestre()) return [{ id: "alunos", label: "Alunos" }, { id: "conta", label: "Minha conta" }];   // mestre só monitora
+    const t = [{ id: "geral", label: "Visão geral" }, { id: "lancar", label: "Lançar questões" }];
     if (slugs().length) t.push({ id: "planejador", label: "Planejador" });
     slugs().forEach(slug => t.push({ id: "prova-" + slug, label: (cfg.provas[slug] || {}).nome || slug.toUpperCase() }));
     t.push({ id: "conta", label: "Minha conta" });
@@ -42,7 +41,7 @@
     if (todos) {
       const perfis = await API.profiles(), por = new Map();
       todos.forEach(r => { if (!por.has(r.user_id)) por.set(r.user_id, []); por.get(r.user_id).push(r); });
-      APP.resumos = perfis.map(pf => AV.resumoAluno(pf, por.get(pf.id) || [], DB, cfg));
+      APP.resumos = perfis.filter(pf => pf.papel !== "mestre").map(pf => AV.resumoAluno(pf, por.get(pf.id) || [], DB, cfg));
     }
     APP.offline = false;
     recompute(); guardar();
@@ -112,7 +111,7 @@
     if (!app) { $("#tabs").innerHTML = ""; $("#userbox").innerHTML = ""; $("#fontes").innerHTML = ""; $("#view").innerHTML = AV.auth(APP); return; }
 
     const T = tabs();
-    if (!T.find(t => t.id === state.tab)) state.tab = "geral";
+    if (!T.find(t => t.id === state.tab)) state.tab = T[0].id;
     if (state.tab !== "alunos") APP.vendo = null;
     $("#tabs").innerHTML = T.map(t => t.sep ? `<div class="tab-sep">${t.sep}</div>` : `<button class="tab ${t.id === state.tab ? "on" : ""}" data-tab="${t.id}" ${t.id === state.tab ? 'aria-current="page"' : ""}>${t.label}</button>`).join("");
     $("#userbox").innerHTML = `<div class="ub-name">${window.CHARTS.esc(APP.profile.nome || APP.profile.email)}</div>
@@ -298,7 +297,7 @@
     } else if (tipo === "conta") {
       const provas = [...f.querySelectorAll('input[name="prova"]:checked')].map(i => i.value);
       if (!(v.nome || "").trim()) return falha("Informe seu nome.");
-      tarefa(async () => { APP.profile = (await API.updateProfile(uid(), { nome: v.nome.trim(), provas })) || APP.profile; guardar(); }, "Dados salvos.");
+      tarefa(async () => { APP.profile = (await API.updateProfile(uid(), mestre() ? { nome: v.nome.trim() } : { nome: v.nome.trim(), provas })) || APP.profile; guardar(); }, "Dados salvos.");
     }
   });
 

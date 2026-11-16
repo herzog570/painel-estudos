@@ -187,7 +187,7 @@
     let geral = null;
     if (t2 && t9) {
       const nPre = t2.total - t9.total, cPre = t2.corretas - t9.corretas;
-      geral = { nPre, cPre, pPre: 100 * cPre / nPre, ...trend(t2.total, 100 * t2.corretas / t2.total, t9.total, 100 * t9.corretas / t9.total, R) };
+      if (nPre > 0 && t9.total > 0) geral = { nPre, cPre, pPre: 100 * cPre / nPre, ...trend(t2.total, 100 * t2.corretas / t2.total, t9.total, 100 * t9.corretas / t9.total, R) };
     }
     return { areas, temas, geral };
   }

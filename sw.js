@@ -1,7 +1,7 @@
 /* Service worker: casca em cache (funciona offline); dados.js sempre tenta a rede primeiro. */
-const CACHE = "painel-v2";
+const CACHE = "painel-v3";
 const SHELL = ["./", "./index.html", "./style.css", "./config.js", "./manifest.json",
-  "./js/md.js", "./js/model.js", "./js/charts.js", "./js/planner.js", "./js/views.js", "./js/main.js",
+  "./js/md.js", "./js/model.js", "./js/charts.js", "./js/planner.js", "./js/views.js", "./js/perfil.js", "./js/app_views.js", "./js/api.js", "./js/main.js",
   "./icons/icon-192.png", "./icons/icon-512.png"];
 
 self.addEventListener("install", e => {
@@ -12,7 +12,11 @@ self.addEventListener("activate", e => {
 });
 self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);
-  if (url.origin !== location.origin) return;                       // fontes do Google etc.: padrão do navegador
+  if (url.hostname === "cdn.jsdelivr.net") {                          // biblioteca de login: guarda para abrir offline
+    e.respondWith(caches.open(CACHE).then(async c => (await c.match(e.request)) || fetch(e.request).then(r => { if (r.ok) c.put(e.request, r.clone()); return r; })));
+    return;
+  }
+  if (url.origin !== location.origin) return;                       // Supabase, fontes do Google: sempre pela rede
   const networkFirst = /dados\.js$|config\.js$|\.js$|\.css$|\.html$|\/$/.test(url.pathname);
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);

@@ -2,24 +2,69 @@
 (function () {
   "use strict";
   const cfg = window.DASH_CONFIG, PL = window.PLANNER;
-  const state = { tab: (location.hash || "#geral").slice(1), exHideZero: true };
+  const state = { tab: /^#[a-z][a-z0-9-]*$/.test(location.hash) ? location.hash.slice(1) : "", exHideZero: true };
   let DB = null, ctx = null;
+  const API = window.API, AV = window.AV, PF = window.PERFIL;
+  const APP = { screen: "carregando", msg: null, session: null, profile: null, rows: [], resumos: [], vendo: null, offline: false };
 
   const $ = s => document.querySelector(s);
 
-  function build(files, origem) {
-    DB = window.MODEL.loadSources(files);
-    DB.origem = origem;
-    render();
-  }
-
+  /* ---------- Dados ---------- */
   const slugs = () => Object.keys(DB.provas).sort();
+  const mestre = () => APP.profile && APP.profile.papel === "mestre";
+  const uid = () => APP.session && APP.session.user.id;
+
+  function recompute() {
+    const hoje = new Date();
+    DB.desempenho = PF.perf(APP.rows, hoje);
+    DB.desempenhoPlan = PF.perf(APP.rows, hoje, PF.corte7(hoje));   // histórico sem os últimos 7 dias...
+    DB.semana = PF.semana(APP.rows, hoje);                          // ...que entram no planejador como "semana"
+  }
   function tabs() {
-    const t = [{ id: "geral", label: "Visão geral" }];
+    const t = [];
+    if (mestre()) t.push({ id: "alunos", label: "Alunos" }, { sep: "Meu painel" });
+    t.push({ id: "geral", label: "Visão geral" }, { id: "lancar", label: "Lançar questões" });
     if (slugs().length) t.push({ id: "planejador", label: "Planejador" });
     slugs().forEach(slug => t.push({ id: "prova-" + slug, label: (cfg.provas[slug] || {}).nome || slug.toUpperCase() }));
+    t.push({ id: "conta", label: "Minha conta" });
     return t;
   }
+
+  /* Cópia local do último carregamento, para abrir sem internet (só os dados do próprio usuário) */
+  const CK = "painel.cache.v1";
+  const guardar = () => { try { localStorage.setItem(CK, JSON.stringify({ uid: uid(), profile: APP.profile, rows: APP.rows })); } catch (_) { /* sem cache */ } };
+  const lerCache = () => { try { const c = JSON.parse(localStorage.getItem(CK) || "null"); return c && c.uid === uid() ? c : null; } catch (_) { return null; } };
+  const limparCache = () => { try { localStorage.removeItem(CK); } catch (_) { /* nada */ } };
+
+  async function carregar() {
+    const todos = mestre() ? await API.rows(null) : null;
+    APP.rows = todos ? todos.filter(r => r.user_id === uid()) : await API.rows(uid());
+    if (todos) {
+      const perfis = await API.profiles(), por = new Map();
+      todos.forEach(r => { if (!por.has(r.user_id)) por.set(r.user_id, []); por.get(r.user_id).push(r); });
+      APP.resumos = perfis.map(pf => AV.resumoAluno(pf, por.get(pf.id) || [], DB, cfg));
+    }
+    APP.offline = false;
+    recompute(); guardar();
+  }
+
+  async function entrar(session) {
+    APP.session = session; APP.msg = null;
+    try {
+      APP.profile = await API.myProfile(uid());
+      if (!APP.profile) { APP.screen = "erro"; APP.msg = { tipo: "erro", texto: "Sua conta existe, mas o perfil não foi encontrado no banco. Avise o responsável pelo painel." }; return render(); }
+      if (APP.profile.status !== "aprovado") { APP.screen = "aguardando"; return render(); }
+      await carregar();
+    } catch (e) {
+      const c = e.rede ? lerCache() : null;
+      if (!c) { APP.screen = "erro"; APP.msg = { tipo: "erro", texto: e.message }; return render(); }
+      APP.profile = c.profile; APP.rows = c.rows; APP.resumos = []; APP.offline = true; recompute();
+    }
+    APP.screen = "app";
+    if (!state.tab) state.tab = mestre() && !APP.offline ? "alunos" : "geral";
+    render();
+  }
+  function sair() { APP.session = null; APP.profile = null; APP.rows = []; APP.resumos = []; APP.vendo = null; APP.screen = "login"; state.tab = ""; limparCache(); render(); }
 
   /* ---------- Estado do planejador (conveniência local; funciona sem storage) ---------- */
   const KEY = "painel.plan.v2";
@@ -35,9 +80,9 @@
 
   /* Monta o contexto do planejador: provas, seleção, pesos e os dois planos (atual e recomendado) */
   function buildCtx() {
-    const S = st(), P = cfg.planejador, perfDate = DB.desempenho && DB.desempenho.date;
+    const S = st(), P = cfg.planejador, perfDate = DB.desempenhoPlan && DB.desempenhoPlan.date;
     const exams = slugs().map(slug => {
-      const A = window.MODEL.analyzeExam(slug, DB.provas[slug].data, DB.desempenho, cfg);
+      const A = window.MODEL.analyzeExam(slug, DB.provas[slug].data, DB.desempenhoPlan, cfg);
       const dias = PL.diasAte(A.cfg.data);
       const passada = dias != null && dias < 0;
       const selected = passada ? S.sel[slug] === "force" : S.sel[slug] !== false;
@@ -62,17 +107,33 @@
   const tituloPlano = () => ctx.exams.filter(e => e.selected).map(e => e.nome + (ctx.exams.filter(x => x.selected).length > 1 ? " " + Math.round(100 * e.w) + "%" : "")).join(" + ");
 
   function render() {
+    const app = APP.screen === "app";
+    document.body.classList.toggle("anon", !app);
+    if (!app) { $("#tabs").innerHTML = ""; $("#userbox").innerHTML = ""; $("#fontes").innerHTML = ""; $("#view").innerHTML = AV.auth(APP); return; }
+
     const T = tabs();
     if (!T.find(t => t.id === state.tab)) state.tab = "geral";
-    $("#tabs").innerHTML = T.map(t => `<button class="tab ${t.id === state.tab ? "on" : ""}" data-tab="${t.id}">${t.label}</button>`).join("");
+    if (state.tab !== "alunos") APP.vendo = null;
+    $("#tabs").innerHTML = T.map(t => t.sep ? `<div class="tab-sep">${t.sep}</div>` : `<button class="tab ${t.id === state.tab ? "on" : ""}" data-tab="${t.id}" ${t.id === state.tab ? 'aria-current="page"' : ""}>${t.label}</button>`).join("");
+    $("#userbox").innerHTML = `<div class="ub-name">${window.CHARTS.esc(APP.profile.nome || APP.profile.email)}</div>
+      <div class="ub-sub">${mestre() ? "mestre" : "aluno"}${APP.offline ? " · sem conexão" : ""}</div><button class="link" data-act="sair">Sair</button>`;
 
     let html = "";
+    const temDados = DB.desempenho.totals.a2.total > 0;
     try {
-      if (state.tab === "geral") {
-        if (!DB.desempenho) html = `<div class="empty">Nenhum arquivo <code>desempenho_*.md</code> encontrado.</div>`;
-        else html = window.VIEWS.overview(DB.desempenho, window.MODEL.analyzeOverview(DB.desempenho, cfg), state);
+      if (state.tab === "alunos") {
+        const r = APP.vendo && APP.resumos.find(x => x.pf.id === APP.vendo);
+        html = APP.offline ? `<div class="empty"><h2>Sem conexão</h2><p>A lista de alunos precisa de internet.</p></div>`
+          : r ? AV.mestreAluno(r, DB, cfg, state) : AV.mestre(APP, DB, cfg, state);
+      } else if (state.tab === "lancar") {
+        html = AV.lancar(APP, PF.taxonomia(DB.provas), state);
+      } else if (state.tab === "conta") {
+        html = AV.conta(APP, slugs(), cfg);
+      } else if (state.tab === "geral") {
+        html = temDados ? window.VIEWS.overview(DB.desempenho, window.MODEL.analyzeOverview(DB.desempenho, cfg), state)
+          : AV.vazio("Registre as listas que você fizer para ver seu desempenho por área e por tema.");
       } else if (state.tab === "planejador") {
-        html = window.VIEWS.plannerPage(buildCtx());
+        html = temDados ? window.VIEWS.plannerPage(buildCtx()) : AV.vazio("O planejador usa seus acertos por subtema. Lance suas primeiras listas para gerar o plano.");
       } else {
         const slug = state.tab.replace(/^prova-/, "");
         html = window.VIEWS.exam(window.MODEL.analyzeExam(slug, DB.provas[slug].data, DB.desempenho, cfg), state);
@@ -81,12 +142,8 @@
       console.error(e);
       html = `<div class="empty">Erro ao montar a guia: ${e.message}</div>`;
     }
-    $("#view").innerHTML = html;
-
-    const d = DB.desempenho;
-    $("#fontes").innerHTML = `Fontes (${DB.origem}): ${DB.arquivos.map(a => `<code>${a}</code>`).join(" · ")}`
-      + (window.MD_GERADO_EM && DB.origem === "dados.js" ? ` · atualizado em ${window.MD_GERADO_EM}` : "")
-      + (d ? ` · desempenho de ${d.date.split("-").reverse().join("/")}` : "");
+    $("#view").innerHTML = (APP.offline ? `<p class="msg">Sem conexão: mostrando os dados salvos neste aparelho. Lançamentos novos precisam de internet.</p>` : "") + html;
+    $("#fontes").innerHTML = `Incidência: ${DB.arquivos.map(a => `<code>${a}</code>`).join(" · ")}` + (window.MD_GERADO_EM ? ` · atualizado em ${window.MD_GERADO_EM}` : "");
   }
 
   /* Atualização em tempo real: recalcula e troca só o corpo do plano e os rótulos (não toca nos sliders) */
@@ -178,15 +235,105 @@
     }
   });
 
-  /* Carregar pasta manualmente (alternativa ao .bat) */
-  $("#pick").addEventListener("change", async e => {
-    const files = {};
-    for (const f of e.target.files) if (/\.md$/i.test(f.name) && !/[\\/]app[\\/]/.test(f.webkitRelativePath || "")) files[f.name] = await f.text();
-    if (!Object.keys(files).length) { alert("Nenhum .md encontrado na pasta escolhida."); return; }
-    build(files, "pasta selecionada");
+  /* ---------- Conta, lançamentos e mestre ---------- */
+  const ir = tab => { state.tab = tab; history.replaceState(null, "", "#" + tab); };
+  async function tarefa(fn, okMsg) {
+    try { await fn(); APP.msg = okMsg ? { tipo: "ok", texto: okMsg } : null; }
+    catch (e) { APP.msg = { tipo: "erro", texto: e.message }; }
+    render();
+  }
+
+  document.addEventListener("click", e => {
+    const b = e.target.closest("[data-act]");
+    if (!b) return;
+    const a = b.dataset.act;
+    if (a === "ir") { APP.screen = b.dataset.to; APP.msg = null; render(); }
+    else if (a === "sair") { API.signOut().catch(() => {}); sair(); }
+    else if (a === "recarregar") { APP.screen = "carregando"; render(); iniciar(); }
+    else if (a === "ver") { APP.vendo = b.dataset.id; APP.msg = null; render(); window.scrollTo(0, 0); }
+    else if (a === "voltar") { APP.vendo = null; render(); window.scrollTo(0, 0); }
+    else if (a === "apagar") {
+      if (!confirm("Apagar este lançamento? Não dá para desfazer.")) return;
+      tarefa(async () => { await API.delRow(+b.dataset.id); await carregar(); }, "Lançamento apagado.");
+    } else if (a === "status") {
+      const st = b.dataset.st, r = APP.resumos.find(x => x.pf.id === b.dataset.id), quem = r ? (r.pf.nome || r.pf.email) : "este perfil";
+      if (st === "bloqueado" && !confirm(`Bloquear o acesso de ${quem}?`)) return;
+      tarefa(async () => { await API.updateProfile(b.dataset.id, { status: st }); await carregar(); if (st === "bloqueado") APP.vendo = null; },
+        st === "aprovado" ? `${quem}: acesso aprovado.` : `${quem}: acesso bloqueado.`);
+    }
   });
 
-  if (window.MD_FONTES && Object.keys(window.MD_FONTES).length) build(window.MD_FONTES, "dados.js");
-  else $("#view").innerHTML = `<div class="empty"><h2>Sem dados carregados</h2>
-    <p>Rode <b>Abrir Painel.bat</b> (lê os .md da pasta e abre esta tela) ou use <b>Carregar pasta…</b> e escolha a pasta <i>dashboard estudos</i>.</p></div>`;
+  document.addEventListener("submit", e => {
+    const f = e.target.closest("form[data-form]");
+    if (!f) return;
+    e.preventDefault();
+    const v = Object.fromEntries(new FormData(f)), tipo = f.dataset.form;
+    const falha = t => { APP.msg = { tipo: "erro", texto: t }; render(); };
+    const email = (v.email || "").trim();
+    if (tipo === "login") {
+      if (!email || !v.senha) return falha("Informe e-mail e senha.");
+      tarefa(async () => { const d = await API.signIn(email, v.senha); await entrar(d.session); });
+    } else if (tipo === "cadastro") {
+      if (!(v.nome || "").trim() || !email) return falha("Informe nome e e-mail.");
+      if ((v.senha || "").length < 8) return falha("A senha precisa ter pelo menos 8 caracteres.");
+      tarefa(async () => {
+        const d = await API.signUp(v.nome.trim(), email, v.senha);
+        if (d.session) return entrar(d.session);
+        APP.screen = "login";
+      }, "Conta criada. Abra o link de confirmação que enviamos para o seu e-mail e depois entre.");
+    } else if (tipo === "recuperar") {
+      if (!email) return falha("Informe o e-mail da conta.");
+      tarefa(async () => { await API.recover(email); APP.screen = "login"; }, "Se o e-mail tiver conta, enviamos um link para criar uma nova senha.");
+    } else if (tipo === "novasenha") {
+      if ((v.senha || "").length < 8) return falha("A senha precisa ter pelo menos 8 caracteres.");
+      tarefa(async () => { await API.setPassword(v.senha); await entrar(await API.session()); });
+    } else if (tipo === "lancar") {
+      const q = parseInt(v.questoes, 10), c = parseInt(v.acertos, 10);
+      state.lcData = v.data; state.lcArea = v.area;
+      if (!v.data || !v.tema) return falha("Escolha a data e o subtema.");
+      if (!(q > 0)) return falha("Informe quantas questões você fez.");
+      if (!(c >= 0) || c > q) return falha("Os acertos precisam estar entre 0 e o número de questões.");
+      tarefa(async () => { await API.addRows([{ data: v.data, area: v.area, tema: v.tema, questoes: q, acertos: c, origem: "manual" }]); await carregar(); },
+        `Salvo: ${v.tema}, ${c} de ${q}.`);
+    } else if (tipo === "conta") {
+      const provas = [...f.querySelectorAll('input[name="prova"]:checked')].map(i => i.value);
+      if (!(v.nome || "").trim()) return falha("Informe seu nome.");
+      tarefa(async () => { APP.profile = (await API.updateProfile(uid(), { nome: v.nome.trim(), provas })) || APP.profile; guardar(); }, "Dados salvos.");
+    }
+  });
+
+  document.addEventListener("change", async e => {
+    const d = e.target.dataset || {};
+    if (d.lc === "area") { state.lcArea = e.target.value; const dt = document.getElementById("lc-data"); if (dt) state.lcData = dt.value; APP.msg = null; render(); }
+    if (d.lc === "importar" && e.target.files[0]) {
+      const file = e.target.files[0], m = file.name.match(/(\d{4}-\d{2}-\d{2})/);
+      const txt = await file.text();
+      const nome = "semana_" + (m ? m[1] : PF.iso(new Date())) + ".md";
+      const sem = window.MODEL.loadSources({ [nome]: txt }).semana;
+      const linhas = sem ? sem.temas.filter(t => t.n > 0 && t.c <= t.n && t.area) : [];
+      if (!linhas.length) { APP.msg = { tipo: "erro", texto: "Não encontrei linhas válidas no arquivo (colunas Área, Tema, Questões, Acertos)." }; return render(); }
+      if (!confirm(`Importar ${linhas.length} linhas (${linhas.reduce((s, t) => s + t.n, 0)} questões) com data ${PF.br(sem.date)}?`)) return render();
+      tarefa(async () => { await API.addRows(linhas.map(t => ({ data: sem.date, area: t.area, tema: t.nome, questoes: t.n, acertos: t.c, origem: "estrategia" }))); await carregar(); },
+        `${linhas.length} linhas importadas.`);
+    }
+  });
+
+  /* ---------- Início ---------- */
+  async function iniciar() {
+    if (!API) { APP.screen = "erro"; APP.msg = { tipo: "erro", texto: "Não foi possível carregar o serviço de login. Verifique a internet e tente de novo." }; return render(); }
+    try {
+      const s = await API.session();
+      if (s) return entrar(s);
+      APP.screen = "login"; render();
+    } catch (e) { APP.screen = "erro"; APP.msg = { tipo: "erro", texto: e.message }; render(); }
+  }
+
+  DB = window.MODEL.loadSources(window.MD_FONTES || {});
+  DB.desempenho = null; DB.semana = null;
+  render();
+  if (API) API.onAuth((ev, s) => {
+    if (ev === "PASSWORD_RECOVERY") { APP.session = s; APP.screen = "novasenha"; APP.msg = null; render(); }
+    else if (ev === "SIGNED_OUT" && APP.session) sair();
+  });
+  iniciar();
 })();

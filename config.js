@@ -7,6 +7,12 @@
  * e (opcional) adicione o slug abaixo com o número de questões e observações.
  */
 window.DASH_CONFIG = {
+  // Supabase: URL do projeto e chave publicável (pode ficar no site; a proteção está nas regras do banco)
+  backend: {
+    url: "https://sjemogvunxcpnollqmgd.supabase.co",
+    key: "sb_publishable_2-LnxInAMODfXBWpIEM7hA_1lDJGIRL"
+  },
+
   provas: {
     susba: {
       nome: "SUS-BA",

@@ -32,8 +32,8 @@
       r.values.forEach((v, j) => {
         if (v == null) return;
         const bh = (rowH - 12) / series.length, yy = y + 2 + j * bh;
-        s += `<rect class="bar ${series[j].cls}" x="${labelW}" y="${yy}" width="${Math.max(1, x(v) - labelW)}" height="${bh - 2}" rx="2"><title>${esc(r.label)} · ${esc(series[j].name)}: ${v}%</title></rect>`;
-        s += `<text class="val small" x="${x(v) + 4}" y="${yy + bh - 4}">${v}%</text>`;
+        s += `<rect class="bar ${series[j].cls}" x="${labelW}" y="${yy}" width="${Math.max(1, x(v) - labelW)}" height="${bh - 2}" rx="2"><title>${esc(r.label)} · ${esc(series[j].name)}: ${Math.round(v)}%</title></rect>`;
+        s += `<text class="val small" x="${x(v) + 4}" y="${yy + bh - 4}">${Math.round(v)}%</text>`;
       });
     });
     return s + "</svg>";

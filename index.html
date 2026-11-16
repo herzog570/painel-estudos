@@ -23,11 +23,7 @@
       <span class="brand-txt"><span class="brand-name">Painel de Estudos</span><span class="brand-sub">residência</span></span>
     </div>
     <nav id="tabs" class="tabs" aria-label="Guias"></nav>
-    <label class="btn side-btn" title="Lê os .md de uma pasta, sem rodar o .bat">
-      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-      Carregar pasta…
-      <input id="pick" type="file" webkitdirectory directory multiple hidden>
-    </label>
+<div id="userbox" class="userbox"></div>
     <div class="side-foot">
       <p class="greek" lang="grc">ὁ βίος βραχύς, ἡ δὲ τέχνη μακρή</p>
       <p class="translit">ho bíos brachýs, hē de téchnē makrḗ</p>
@@ -39,14 +35,18 @@
     <footer id="fontes" class="foot"></footer>
   </div>
 
-  <!-- dados.js é gerado a partir dos .md por "Abrir Painel.bat" -->
+  <!-- dados.js: tabelas de incidência das provas (geradas a partir dos incidencia_*.md) -->
   <script src="dados.js"></script>
   <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="js/api.js"></script>
   <script src="js/md.js"></script>
   <script src="js/model.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/planner.js"></script>
   <script src="js/views.js"></script>
+  <script src="js/perfil.js"></script>
+  <script src="js/app_views.js"></script>
   <script src="js/main.js"></script>
   <script>
     if ("serviceWorker" in navigator && location.protocol !== "file:")

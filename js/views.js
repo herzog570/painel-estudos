@@ -157,9 +157,9 @@
     let h = `<div class="card plan-head">
         <div class="plan-src">${sem
           ? (sem.usada
-              ? `Semana usada: <code>${esc(sem.file)}</code> · ${fmtInt(sem.nTotal)} questões combinadas com o histórico de 2 anos.`
-              : `<span class="warn">Semana <code>${esc(sem.file)}</code> não usada: é anterior ou igual à data do <code>desempenho_*.md</code> (já está contida nele).</span>`)
-          : `Nenhum <code>semana_AAAA-MM-DD.md</code> na pasta: plano baseado no histórico de 2 anos + incidência. Modelo em <code>app\\MODELO_semana.md</code>.`}
+              ? `Últimos 7 dias: ${fmtInt(sem.nTotal)} questões lançadas, combinadas com o histórico anterior.`
+              : `<span class="warn">Semana não usada.</span>`)
+          : `Sem lançamentos nos últimos 7 dias: plano baseado no histórico de 2 anos + incidência.`}
           ${sem && sem.naoCasados.length ? `<div class="warn tiny">Temas da semana sem correspondência na taxonomia: ${sem.naoCasados.map(esc).join(", ")}</div>` : ""}
         </div>
         <div class="plan-actions"><span class="hint">${pl.somaN} questões no ciclo${pl.auto ? " · divisão sugerida" : ""}</span><button class="btn" data-plan="copiar">Copiar plano</button>
@@ -297,5 +297,5 @@
     return h;
   }
 
-  window.VIEWS = { overview, exam, plannerPage, plannerBody, SLIDERS };
+  window.VIEWS = { overview, exam, plannerPage, plannerBody, SLIDERS, chip, sortableTable, fmtInt, fmt1, fmt2, pct };
 })();

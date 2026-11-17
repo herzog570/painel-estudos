@@ -106,7 +106,7 @@
   }
 
   /* ---------- Mestre: resumo de um aluno ---------- */
-  function resumoAluno(pf, rows, DB, cfg) {
+  function resumoAluno(pf, rows, DB, cfg, qs) {
     const perf = P.perf(rows), t2 = perf.totals.a2, t9 = perf.totals.d90;
     const w = P.semanas(rows, 1)[0];
     const ult = rows.length ? rows.reduce((m, r) => (r.data > m ? r.data : m), "0") : null;
@@ -118,7 +118,8 @@
       const A = window.MODEL.analyzeExam(slug, DB.provas[slug].data, perf, cfg);
       proj[slug] = { A, acc: A.resumo.accPond, pontos: A.resumo.pontosEsperados, Q: A.Q, cobertura: A.resumo.cobertura, nome: A.cfg.nome };
     });
-    return { pf, rows, perf, n7: w.n, p7: w.pct, nTot: t2.total, pTot: t2.pct, ult, dias, tr, proj };
+    qs = qs || [];
+    return { pf, rows, perf, n7: w.n, p7: w.pct, nTot: t2.total, pTot: t2.pct, ult, dias, tr, proj, qlist: qs, quest: window.QUEST.resumoMestre(qs) };
   }
 
   function mestre(APP, DB, cfg, state) {
@@ -138,6 +139,8 @@
       pend.map(r => `<tr><td><b>${esc(r.pf.nome || "(sem nome)")}</b><div class="tiny">${esc(r.pf.email)}</div></td><td class="tiny">cadastro em ${P.br(String(r.pf.criado_em).slice(0, 10))}</td>
         <td class="num"><button class="btn primary" data-act="status" data-id="${r.pf.id}" data-st="aprovado">Aprovar</button> <button class="btn" data-act="status" data-id="${r.pf.id}" data-st="bloqueado">Recusar</button></td></tr>`).join("") + `</tbody></table></div>`;
 
+    const esg = alunos.filter(r => r.quest.alerta);
+    if (esg.length) h += `<p class="msg erro" role="status">Motivação "perto do esgotamento" no questionário: ${esg.map(r => `<button class="link" data-act="ver" data-id="${r.pf.id}">${esc(r.pf.nome || r.pf.email)}</button>`).join(", ")}.</p>`;
     h += `<h2>Perfis</h2>`;
     if (!state["ms-alunos"]) state["ms-alunos"] = { key: "n7", dir: -1 };
     const cols = [
@@ -147,7 +150,9 @@
       { key: "nTot", label: "Questões 2a", num: true, render: r => fmtInt(r.nTot) },
       { key: "pTot", label: "Acerto 2a", num: true, render: r => pct(r.pTot) },
       { key: "dias", label: "Último lançamento", num: true, sortVal: r => (r.dias == null ? 99999 : r.dias), render: r => r.dias == null ? "nunca" : r.dias === 0 ? "hoje" : `há ${r.dias} d` },
-      { key: "tr", label: "Tendência 90d", sortVal: r => r.tr.delta, render: r => chip(r.tr) }
+      { key: "tr", label: "Tendência 90d", sortVal: r => r.tr.delta, render: r => chip(r.tr) },
+      { key: "mot", label: "Motivação", sortVal: r => r.quest.alerta ? 0 : r.quest.motivacao ? 1 : 2, render: r => r.quest.motivacao ? `<span class="${r.quest.alerta ? "warn" : ""}">${esc(r.quest.motivacao)}</span>` : "—" },
+      { key: "qz", label: "Questionário", sortVal: r => ({ nunca: 0, incompleto: 1, revisao: 2, "em dia": 3 })[r.quest.status], render: r => ({ nunca: "não respondeu", incompleto: "incompleto", revisao: "revisão pendente", "em dia": "em dia" })[r.quest.status] }
     ].concat(slugs.map(s => ({ key: "pj-" + s, label: "Projeção " + ((cfg.provas[s] || {}).nome || s), num: true, title: "acerto ponderado pela incidência da prova", sortVal: r => r.proj[s].acc, render: r => r.proj[s].acc == null ? "—" : `<span class="${r.proj[s].cobertura < 0.5 ? "lowconf" : ""}" title="dados cobrem ${Math.round(100 * (r.proj[s].cobertura || 0))}% da incidência da prova">${fmt1(r.proj[s].acc)}%</span>` })));
     h += alunos.length ? sortableTable("ms-alunos", alunos, cols, state) : `<p class="muted">Nenhum perfil aprovado ainda.</p>`;
 
@@ -162,7 +167,9 @@
       <section class="exam-head"><h2 class="nomargin">${esc(r.pf.nome || r.pf.email)}</h2>
         <div class="muted">${esc(r.pf.email)} · ${r.dias == null ? "nunca lançou" : r.dias === 0 ? "lançou hoje" : "último lançamento há " + r.dias + " dias"}${(r.pf.provas || []).length ? " · vai prestar " + r.pf.provas.map(s => esc((cfg.provas[s] || {}).nome || s)).join(", ") : ""}</div></section>
       ${r.pf.papel !== "mestre" ? `<p><button class="btn" data-act="status" data-id="${r.pf.id}" data-st="bloqueado">Bloquear acesso</button></p>` : ""}`;
-    if (!r.nTot) return h + `<div class="empty"><h2>Nenhuma questão lançada</h2><p>Este perfil ainda não registrou questões.</p></div>`;
+    const media4 = P.semanas(r.rows, 4).reduce((s, x) => s + x.n, 0) / 4;
+    const blocoQ = window.QUEST.blocoMestre(r.qlist, r.nTot ? media4 : null);
+    if (!r.nTot) return h + blocoQ + `<div class="empty"><h2>Nenhuma questão lançada</h2><p>Este perfil ainda não registrou questões.</p></div>`;
 
     h += `<div class="card"><div class="card-h"><h3>Atividade semanal</h3><span class="hint">questões lançadas por semana (8 semanas)</span></div>
       ${hbars(sem.map(s => ({ label: s.label, value: s.n, sub: s.pct == null ? "sem lançamentos" : "acerto " + Math.round(s.pct) + "%" })), { fmt: v => String(v), labelW: 110, rowH: 22, width: 900, max: Math.max(...sem.map(s => s.n), 10) })}
@@ -176,7 +183,7 @@
         <p class="hint">≈ ${pj.pontos == null ? "—" : fmt1(pj.pontos)} de ${pj.Q} questões · dados cobrem ${pj.cobertura == null ? "—" : Math.round(100 * pj.cobertura) + "%"} da incidência</p>
         ${top.length ? `<table class="plan-tbl"><tbody>${top.map(t => `<tr><td class="pq">${t.perda.toFixed(1).replace(".", ",")}</td><td><b>${esc(t.nome)}</b><div class="tiny">incidência ${t.inc.toFixed(2).replace(".", ",")}% · acerto ${pct(t.acc)} (${fmtInt(t.nAcc)} q) ${chip(t.tr)}</div></td></tr>`).join("")}</tbody></table>` : `<p class="muted">Sem dados nos temas desta prova.</p>`}</div>`;
     });
-    h += `</div><h2>Desempenho</h2>` + V.overview(r.perf, window.MODEL.analyzeOverview(r.perf, cfg), state);
+    h += `</div>` + blocoQ + `<h2>Desempenho</h2>` + V.overview(r.perf, window.MODEL.analyzeOverview(r.perf, cfg), state);
     return h;
   }
 

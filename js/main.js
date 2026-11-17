@@ -5,7 +5,8 @@
   const state = { tab: /^#[a-z][a-z0-9-]*$/.test(location.hash) ? location.hash.slice(1) : "", exHideZero: true };
   let DB = null, ctx = null;
   const API = window.API, AV = window.AV, PF = window.PERFIL;
-  const APP = { screen: "carregando", msg: null, session: null, profile: null, rows: [], resumos: [], vendo: null, offline: false };
+  const APP = { screen: "carregando", msg: null, session: null, profile: null, rows: [], resumos: [], vendo: null, offline: false, quest: [], questOk: true };
+  const Q = window.QUEST;
 
   const $ = s => document.querySelector(s);
 
@@ -25,23 +26,30 @@
     const t = [{ id: "geral", label: "Visão geral" }, { id: "lancar", label: "Lançar questões" }];
     if (slugs().length) t.push({ id: "planejador", label: "Planejador" });
     slugs().forEach(slug => t.push({ id: "prova-" + slug, label: (cfg.provas[slug] || {}).nome || slug.toUpperCase() }));
+    if (APP.questOk) t.push({ id: "questionario", label: "Questionário" + (Q.pendencia(APP.quest) ? ' <span class="tab-dot" aria-label="pendente"></span>' : "") });
     t.push({ id: "conta", label: "Minha conta" });
     return t;
   }
 
   /* Cópia local do último carregamento, para abrir sem internet (só os dados do próprio usuário) */
   const CK = "painel.cache.v1";
-  const guardar = () => { try { localStorage.setItem(CK, JSON.stringify({ uid: uid(), profile: APP.profile, rows: APP.rows })); } catch (_) { /* sem cache */ } };
+  const guardar = () => { try { localStorage.setItem(CK, JSON.stringify({ uid: uid(), profile: APP.profile, rows: APP.rows, quest: APP.quest })); } catch (_) { /* sem cache */ } };
   const lerCache = () => { try { const c = JSON.parse(localStorage.getItem(CK) || "null"); return c && c.uid === uid() ? c : null; } catch (_) { return null; } };
   const limparCache = () => { try { localStorage.removeItem(CK); } catch (_) { /* nada */ } };
 
   async function carregar() {
     const todos = mestre() ? await API.rows(null) : null;
     APP.rows = todos ? todos.filter(r => r.user_id === uid()) : await API.rows(uid());
+    // Questionário: se a tabela ainda não existir no banco, o resto do painel segue funcionando sem a guia
+    let qs = null;
+    try { qs = await API.questionarios(mestre() ? null : uid()); APP.questOk = true; }
+    catch (e) { if (e.rede) throw e; console.warn("questionário indisponível:", e.message); APP.questOk = false; qs = []; }
+    APP.quest = qs.filter(q => q.user_id === uid());
     if (todos) {
-      const perfis = await API.profiles(), por = new Map();
+      const perfis = await API.profiles(), por = new Map(), porQ = new Map();
       todos.forEach(r => { if (!por.has(r.user_id)) por.set(r.user_id, []); por.get(r.user_id).push(r); });
-      APP.resumos = perfis.filter(pf => pf.papel !== "mestre").map(pf => AV.resumoAluno(pf, por.get(pf.id) || [], DB, cfg));
+      qs.forEach(q => { if (!porQ.has(q.user_id)) porQ.set(q.user_id, []); porQ.get(q.user_id).push(q); });
+      APP.resumos = perfis.filter(pf => pf.papel !== "mestre").map(pf => AV.resumoAluno(pf, por.get(pf.id) || [], DB, cfg, porQ.get(pf.id) || []));
     }
     APP.offline = false;
     recompute(); guardar();
@@ -57,13 +65,16 @@
     } catch (e) {
       const c = e.rede ? lerCache() : null;
       if (!c) { APP.screen = "erro"; APP.msg = { tipo: "erro", texto: e.message }; return render(); }
-      APP.profile = c.profile; APP.rows = c.rows; APP.resumos = []; APP.offline = true; recompute();
+      APP.profile = c.profile; APP.rows = c.rows; APP.quest = c.quest || []; APP.resumos = []; APP.offline = true; recompute();
     }
     APP.screen = "app";
     if (!state.tab) state.tab = mestre() && !APP.offline ? "alunos" : "geral";
+    if (!mestre() && !APP.offline && APP.questOk && Q.pendencia(APP.quest) && !adiado()) state.tab = "questionario";
     render();
   }
-  function sair() { APP.session = null; APP.profile = null; APP.rows = []; APP.resumos = []; APP.vendo = null; APP.screen = "login"; state.tab = ""; limparCache(); render(); }
+  const QZ_ADIAR = "painel.qz.adiado";
+  const adiado = () => { try { return sessionStorage.getItem(QZ_ADIAR) === uid(); } catch (_) { return false; } };
+  function sair() { APP.session = null; APP.quest = []; state.qz = null; APP.profile = null; APP.rows = []; APP.resumos = []; APP.vendo = null; APP.screen = "login"; state.tab = ""; limparCache(); render(); }
 
   /* ---------- Estado do planejador (conveniência local; funciona sem storage) ---------- */
   const KEY = "painel.plan.v2";
@@ -79,7 +90,8 @@
 
   /* Monta o contexto do planejador: provas, seleção, pesos e os dois planos (atual e recomendado) */
   function buildCtx() {
-    const S = st(), P = cfg.planejador, perfDate = DB.desempenhoPlan && DB.desempenhoPlan.date;
+    const meta = Q.metaSemanal(APP.quest), cfgP = Q.cfgComMeta(cfg, meta);
+    const S = st(), P = cfgP.planejador, perfDate = DB.desempenhoPlan && DB.desempenhoPlan.date;
     const exams = slugs().map(slug => {
       const A = window.MODEL.analyzeExam(slug, DB.provas[slug].data, DB.desempenhoPlan, cfg);
       const dias = PL.diasAte(A.cfg.data);
@@ -98,9 +110,9 @@
     sel.forEach((e, i) => { e.idx = i; e.w = raw[i] / tot; e.wSug = sug[i]; });
     const As = sel.map(e => e.A), W = sel.map(e => e.w);
     const q = Array.isArray(S.q) && S.q.length === P.blocos.length ? S.q : null;
-    const recPl = PL.plan(As, W, DB.semana, perfDate, cfg, q, null);
-    const pl = PL.plan(As, W, DB.semana, perfDate, cfg, q, S.params);
-    ctx = { exams, pl, recPl, P, wManual };
+    const recPl = PL.plan(As, W, DB.semana, perfDate, cfgP, q, null);
+    const pl = PL.plan(As, W, DB.semana, perfDate, cfgP, q, S.params);
+    ctx = { exams, pl, recPl, P, wManual, meta };
     return ctx;
   }
   const tituloPlano = () => ctx.exams.filter(e => e.selected).map(e => e.nome + (ctx.exams.filter(x => x.selected).length > 1 ? " " + Math.round(100 * e.w) + "%" : "")).join(" + ");
@@ -126,6 +138,9 @@
           : r ? AV.mestreAluno(r, DB, cfg, state) : AV.mestre(APP, DB, cfg, state);
       } else if (state.tab === "lancar") {
         html = AV.lancar(APP, PF.taxonomia(DB.provas), state);
+      } else if (state.tab === "questionario") {
+        html = APP.offline ? `<div class="empty"><h2>Sem conexão</h2><p>O questionário precisa de internet.</p></div>`
+          : Q.telaAluno(APP.quest, state.qz || {}, APP.msg ? `<p class="msg ${APP.msg.tipo || ""}" role="status">${window.CHARTS.esc(APP.msg.texto)}</p>` : "");
       } else if (state.tab === "conta") {
         html = AV.conta(APP, slugs(), cfg);
       } else if (state.tab === "geral") {
@@ -189,7 +204,7 @@
       return;
     }
     const tb = e.target.closest("[data-tab]");
-    if (tb) { state.tab = tb.dataset.tab; history.replaceState(null, "", "#" + state.tab); render(); window.scrollTo(0, 0); return; }
+    if (tb) { state.tab = tb.dataset.tab; state.qz = null; APP.msg = null; history.replaceState(null, "", "#" + state.tab); render(); window.scrollTo(0, 0); return; }
     const th = e.target.closest("th[data-sort]");
     if (th) {
       const id = th.closest("table").dataset.table, key = th.dataset.sort;
@@ -201,6 +216,11 @@
 
   document.addEventListener("input", e => {
     const d = e.target.dataset || {};
+    const nm = e.target.name || "";
+    if (nm.startsWith("qo-") && e.target.value.trim()) {
+      const o = document.querySelector(`input[name="q-${nm.slice(3)}"][value="Outro"]`); if (o && !o.checked) o.checked = true;
+      return;
+    }
     if (d.param && ctx) {
       const S = st(), v = parseFloat(e.target.value), sd = window.VIEWS.SLIDERS.find(x => x.k === d.param);
       if (Math.abs(v - ctx.recPl.X[d.param]) <= (sd ? sd.step / 2 : 1e-9)) delete S.params[d.param]; else S.params[d.param] = v;
@@ -215,6 +235,16 @@
 
   document.addEventListener("change", e => {
     const d = e.target.dataset || {};
+    if ((e.target.name || "").startsWith("q-") && e.target.type === "checkbox" && e.target.checked) {
+      const fs = e.target.closest(".qz-q"), all = [...fs.querySelectorAll('input[type=checkbox]')];
+      const excl = "Nenhum outro";                         // opção que exclui as demais
+      if (e.target.value === excl) all.forEach(i => { if (i !== e.target) i.checked = false; });
+      else all.forEach(i => { if (i.value === excl) i.checked = false; });
+      const max = +fs.dataset.max;
+      if (max && all.filter(i => i.checked).length > max) e.target.checked = false;
+      fs.classList.toggle("cheio", !!max && all.filter(i => i.checked).length >= max);
+      return;
+    }
     if (d.filter) {
       if (d.filter === "ov-area") state.ovArea = e.target.value;
       if (d.filter === "ex-area") state.exArea = e.target.value;
@@ -227,9 +257,9 @@
       save(); render(); return;
     }
     if (d.plan === "n" && ctx) {
-      const S = st(), P = cfg.planejador, n = parseInt(e.target.value, 10);
+      const S = st(), P = ctx.P, n = parseInt(e.target.value, 10);
       const q = ctx.pl.blocos.map(b => b.N);
-      q[+d.i] = isNaN(n) ? P.questoesPadrao : Math.min(200, Math.max(10, n));
+      q[+d.i] = isNaN(n) ? Math.round(P.questoesPadrao) : Math.min(200, Math.max(5, n));
       S.q = q; save(); live();
     }
   });
@@ -251,6 +281,10 @@
     else if (a === "recarregar") { APP.screen = "carregando"; render(); iniciar(); }
     else if (a === "ver") { APP.vendo = b.dataset.id; APP.msg = null; render(); window.scrollTo(0, 0); }
     else if (a === "voltar") { APP.vendo = null; render(); window.scrollTo(0, 0); }
+    else if (a === "qz-adiar") { try { sessionStorage.setItem(QZ_ADIAR, uid()); } catch (_) { /* nada */ } ir("geral"); APP.msg = null; render(); window.scrollTo(0, 0); }
+    else if (a === "qz-editar") { state.qz = { editando: true }; APP.msg = null; render(); window.scrollTo(0, 0); }
+    else if (a === "qz-mais") { Q.maisCaixa(b.dataset.q); }
+    else if (a === "qz-cancelar") { state.qz = null; APP.msg = null; render(); window.scrollTo(0, 0); }
     else if (a === "apagar") {
       if (!confirm("Apagar este lançamento? Não dá para desfazer.")) return;
       tarefa(async () => { await API.delRow(+b.dataset.id); await carregar(); }, "Lançamento apagado.");
@@ -294,6 +328,41 @@
       if (!(c >= 0) || c > q) return falha("Os acertos precisam estar entre 0 e o número de questões.");
       tarefa(async () => { await API.addRows([{ data: v.data, area: v.area, tema: v.tema, questoes: q, acertos: c, origem: "manual" }]); await carregar(); },
         `Salvo: ${v.tema}, ${c} de ${q}.`);
+    } else if (tipo === "questionario") {
+      const t = f.dataset.tipo, pend = Q.pendencia(APP.quest);
+      const perguntas = t === "edicao" || !pend ? Q.PERGUNTAS : pend.perguntas;
+      const r = Q.ler(f, perguntas);
+      if (r.erro) {                                     // não redesenha: preserva o que já foi marcado
+        let box = f.querySelector(".qz-erro");
+        if (!box) { box = document.createElement("p"); box.className = "msg erro qz-erro"; box.setAttribute("role", "alert"); f.querySelector(".qz-acoes").before(box); }
+        box.textContent = r.erro;
+        f.querySelectorAll(".qz-q.bad").forEach(x => x.classList.remove("bad"));
+        const fs = document.getElementById("qz-" + r.id); if (fs) { fs.classList.add("bad"); fs.scrollIntoView({ block: "center", behavior: "smooth" }); }
+        return;
+      }
+      const metaAntes = Q.metaSemanal(APP.quest), btn = f.querySelector('button[type="submit"]');
+      btn.disabled = true; btn.textContent = "Enviando…";
+      API.addQuestionario(t, r.respostas).then(novo => {
+        APP.quest = [novo].concat(APP.quest); state.qz = null;
+        const pv = r.respostas.provas;
+        if (pv) {                                       // provas do questionário que o painel conhece → "Provas que vou prestar"
+          const slugsQ = Object.keys(cfg.provas).filter(s => (pv.v || []).includes((cfg.provas[s] || {}).nome) ||
+            (Array.isArray(pv.outro) ? pv.outro : []).some(o => o.replace(/\W/g, "").toLowerCase() === String((cfg.provas[s] || {}).nome).replace(/\W/g, "").toLowerCase())).sort();
+          if (slugsQ.join() !== (APP.profile.provas || []).slice().sort().join())
+            API.updateProfile(uid(), { provas: slugsQ }).then(p => { if (p) { APP.profile = p; guardar(); } }, () => {});
+        }
+        guardar();
+        const meta = Q.metaSemanal(APP.quest);
+        if (meta !== metaAntes) { const S = st(); S.q = null; save(); }
+        APP.msg = { tipo: "ok", texto: "Respostas salvas." + (meta && meta !== metaAntes ? ` O Planejador agora usa ${meta} questões por ciclo.` : "") };
+        render(); window.scrollTo(0, 0);
+      }, err => {                                       // falhou: mantém o formulário como está
+        btn.disabled = false; btn.textContent = "Enviar respostas";
+        let box = f.querySelector(".qz-erro");
+        if (!box) { box = document.createElement("p"); box.className = "msg erro qz-erro"; box.setAttribute("role", "alert"); f.querySelector(".qz-acoes").before(box); }
+        box.textContent = "Não foi possível salvar: " + err.message;
+      });
+      return;
     } else if (tipo === "conta") {
       const provas = [...f.querySelectorAll('input[name="prova"]:checked')].map(i => i.value);
       if (!(v.nome || "").trim()) return falha("Informe seu nome.");

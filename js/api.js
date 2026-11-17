@@ -52,6 +52,14 @@
       return out;
     },
     addRows: rows => ok(sb.from("lancamentos").insert(rows).select("id,user_id,data,area,tema,questoes,acertos,origem")),
-    delRow: id => ok(sb.from("lancamentos").delete().eq("id", id))
+    delRow: id => ok(sb.from("lancamentos").delete().eq("id", id)),
+
+    /* Questionário: envios de um usuário (uid) ou de todos (uid = null, só o mestre recebe). Cada envio é guardado; nada é sobrescrito. */
+    async questionarios(uid) {
+      let q = sb.from("questionario").select("id,user_id,respondido_em,tipo,respostas").order("respondido_em", { ascending: false }).limit(2000);
+      if (uid) q = q.eq("user_id", uid);
+      return ok(q);
+    },
+    addQuestionario: (tipo, respostas) => ok(sb.from("questionario").insert({ tipo, respostas }).select("id,user_id,respondido_em,tipo,respostas").single())
   };
 })();

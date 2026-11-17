@@ -162,7 +162,7 @@
           : `Sem lançamentos nos últimos 7 dias: plano baseado no histórico de 2 anos + incidência.`}
           ${sem && sem.naoCasados.length ? `<div class="warn tiny">Temas da semana sem correspondência na taxonomia: ${sem.naoCasados.map(esc).join(", ")}</div>` : ""}
         </div>
-        <div class="plan-actions"><span class="hint">${pl.somaN} questões no ciclo${pl.auto ? " · divisão sugerida" : ""}</span><button class="btn" data-plan="copiar">Copiar plano</button>
+        <div class="plan-actions"><span class="hint">${pl.somaN} questões no ciclo${pl.auto ? (ctx.meta ? " · sua meta no questionário" : " · divisão sugerida") : ""}</span><button class="btn" data-plan="copiar">Copiar plano</button>
           <button class="btn ghost" data-plan="sugerido" title="Redistribui o total do ciclo entre os dias pela prioridade de cada bloco">Usar divisão sugerida</button></div>
       </div><div class="plan-grid">`;
 
